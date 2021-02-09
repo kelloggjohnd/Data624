@@ -1,0 +1,284 @@
+--- 
+title: "Data 624 - Assignment 1" 
+author: "John Kellogg" 
+date: "2/6/2021" 
+output: html_document 
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(fpp2)
+```
+## 1. Use the help function to explore what the series gold, woolyrnq and gas represent.
+```{r} 
+str(gold) 
+str(woolyrnq) 
+str(gas) 
+```
+### a. Use autoplot() to plot each of these in separate plots. 
+```{r}
+autoplot(gold) 
+autoplot(woolyrnq) 
+autoplot(gas) 
+```
+  
+### b. What is the frequency of each series? Hint: apply the frequency() function
+  
+```{r} 
+cat("Gold Frequency is: ", frequency(gold)) 
+```
+```{r} 
+cat("woolyrnq Frequency is: ", frequency(woolyrnq)) 
+```
+```{r} 
+cat("gas Frequency is: ", frequency(gas)) 
+```
+  
+### c. Use which.max() to spot the outlier in the gold series. Which observation was it?
+  
+
+```{r} 
+cat("When is the maximum value for gold? ",which.max(gold)) 
+```
+```{r} 
+cat("What is the maximum value for gold? ",gold[which.max(gold)]) 
+```
+  
+## 2. Tute1 file
+Download the file 1.csv from the book website, open it in Excel (or
+some other spreadsheet application), and review its contents. You should find
+four columns of information. Columns B through D each contain a quarterly
+series, labelled Sales, AdBudget and GDP. Sales contains the quarterly sales for
+a small company over the period 1981-2005. AdBudget is the advertising budget
+and GDP is the gross domestic product. All series have been adjusted for
+inflation.  
+
+### a. You can read the data into R with the following script: 
+```{r} 
+tute1 <-
+read.csv("tute1.csv", header=TRUE) #View(tute1) 
+``` 
+### b. Convert the data to time series
+```{r} 
+mytimeseries <- ts(tute1[,-1], start=1981, frequency=4) 
+``` 
+(The [,-1] removes the first column which contains the quarters as we don’t need them now.)
+
+### c. Construct time series plots of each of the three series 
+```{r}
+autoplot(mytimeseries, facets=TRUE) 
+``` 
+  
+Check what happens when you don’t include facets=TRUE.   
+  
+```{r} 
+autoplot(mytimeseries) 
+```
+  
+## 3. Retail file
+Download some monthly Australian retail data from the book website. These
+represent retail sales in various categories for different Australian states,
+and are stored in a MS-Excel file.  
+
+### a. You can read the data into R with the following script: 
+```{r} 
+retaildata <- readxl::read_excel("retail.xlsx", skip=1) 
+``` 
+The second argument (skip=1) is required because the Excel sheet has two header rows.
+
+### b. Time Series Graph data
+Select one of the time series as follows (but replace the column name
+with your own chosen column): 
+```{r} 
+myts <- ts(retaildata[,"A3349640L"],
+frequency=12, start=c(1982,4)) 
+``` 
+### c. Time Series Graphs
+Explore your chosen retail time series using the following functions:
+autoplot(), 
+ggseasonplot(), 
+ggsubseriesplot(), 
+gglagplot(), 
+ggAcf()
+
+Can you spot any seasonality, cyclicity and trend? What do you learn about the
+series?  
+  
+Data generated on Turnover;  Victoria;Cafes, restaurants and catering services
+
+```{r} 
+autoplot(myts) 
+``` 
+  
+ 
+  
+
+```{r} 
+ggseasonplot(myts)
+# too many observations to clearly read the non polar graph
+ggseasonplot(myts, polar=TRUE)
+``` 
+
+
+
+```{r} 
+ggsubseriesplot(myts) 
+``` 
+
+
+
+```{r} 
+gglagplot(myts) 
+```
+
+```{r} 
+ggAcf(myts)
+```
+  
+* Between ~1997 and 2000 there is a sharp uptick in values.  
+  * Before this date the seasonality exists but at a much smaller rate. 
+  * Further example of a raise in values from around 1997 and up. 
+* Everything takes a dip in Feb and rises from Nov into Dec 
+  * Appears to be a very small dip around Jun; potential onset of Winter
+  * there is a dip in the mean around the same section 
+* correlations are significantly different from zero
+* Does not appear to have any defined shape of seasonality just a drop over lag
+  
+## 6. Use the following graphics functions: 
+autoplot(), ggseasonplot(), ggsubseriesplot(), gglagplot(), ggAcf() 
+and explore features from the following time series: hsales, 
+usdeaths, bricksq, sunspotarea, gasoline.
+  
+Can you spot any seasonality, cyclicity and trend?   
+What do you learn about the series?  
+  
+### House Sales
+```{r}
+autoplot(hsales)
+```
+
+
+
+```{r}
+ggseasonplot(hsales)
+ggseasonplot(hsales, polar = TRUE)
+```
+
+
+  
+```{r}
+ggsubseriesplot(hsales)
+```
+  
+```{r}
+gglagplot(hsales)
+```
+```{r}
+ggAcf(hsales)
+```
+  
+* There is clear seasonality in home sales starting in March
+  * The house buying season starts in Spring aroudn March and tapers off until we get the lowest point around the holidays
+* Not sure if we are also seeing cycles or just market factors, (gas shortage 1975, recession 1982-83, etc.)
+
+  
+
+### US Deaths
+```{r}
+autoplot(usdeaths)
+```
+
+```{r}
+ggseasonplot(usdeaths)
+ggseasonplot(usdeaths, polar = TRUE)
+```
+
+
+```{r}
+ggsubseriesplot(usdeaths)
+```
+
+```{r}
+gglagplot(usdeaths)
+```
+```{r}
+ggAcf(usdeaths)
+```
+  
+
+* The data suggests a potential 5 year cycle
+* Seasonal pattern of Summer months are more prone to deaths
+  * Slight uptick around the holidays
+  * Feb being the lowest
+  
+### Quarterly clay brick production
+```{r}
+autoplot(bricksq)
+```
+```{r}
+ggseasonplot(bricksq)
+# too many observations to clearly read the non polar graph
+ggseasonplot(bricksq, polar=TRUE)
+```
+```{r}
+ggsubseriesplot(bricksq)
+```
+```{r}
+gglagplot(bricksq)
+```
+```{r}
+ggAcf(bricksq)
+```
+
+* Upward trend in production from earliest date to most recent date of data.
+* Seasonal pattern in Q2 and Q3 where production is higher in the warmer months
+* As the lag grows the ACF drop suggesting the use of the earlier models.
+
+### Annual Average Sunspot Area (1875-2011)
+```{r}
+autoplot(sunspotarea)
+```
+```{r}
+#ggseasonplot(sunspotarea)
+```
+```{r}
+#ggsubseriesplot(sunspotarea)
+```
+```{r}
+gglagplot(sunspotarea)
+```
+```{r}
+ggAcf(sunspotarea)
+```
+
+* This data shows a clear example of no seasonality or trends.  
+* There does exist a good example of a ~12 year cycle.
+
+### Gasoline
+#### Weekly data beginning 2 February 1991, ending 20 January 2017. Units are “million barrels per day”.
+
+```{r}
+autoplot(gasoline)
+```
+```{r}
+ggseasonplot(gasoline)
+# too many observations to clearly read the non polar graph
+ggseasonplot(gasoline, polar = TRUE)
+```
+```{r}
+#ggsubseriesplot(gasoline)
+```
+```{r}
+gglagplot(gasoline)
+```
+```{r}
+ggAcf(gasoline)
+```
+
+* There is a rising trend in gasoline production from 1990 to around 2008 where it starts to fall off.
+  * Could the recession of 2008 have played such a major effect
+* The data does not allow us to see any seasonality clearly as there is not enough observations. 
+  * Looking at the autoplot there does seem to be something seasonal but further data work would be required.
+* No significent cycle
+
