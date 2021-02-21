@@ -1,0 +1,146 @@
+---
+title: "Assignment 2"
+author: "John Kellogg"
+date: "2/20/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(fpp2)
+library(readxl)
+```
+
+## Assignment 2
+
+### 3.1   
+
+#### For the following series, find an appropriate Box-Cox transformation in order to stabilize the variance.
+
+* usnetelec
+* usgdp
+* mcopper
+* enplanements
+
+```{r}
+(usnetelec_lb <- BoxCox.lambda(usnetelec))
+autoplot(BoxCox(usnetelec,usnetelec_lb))
+```
+
+```{r}
+(usgdp_lb <- BoxCox.lambda(usgdp))
+autoplot(BoxCox(usgdp,usgdp_lb))
+```
+
+```{r}
+(mcopper_lb <- BoxCox.lambda(mcopper))
+autoplot(BoxCox(mcopper,mcopper_lb))
+```
+
+```{r}
+(enplanements_lb <- BoxCox.lambda(enplanements))
+autoplot(BoxCox(enplanements,enplanements_lb))
+```
+
+
+### 3.2  
+  
+#### Why is a Box-Cox transformation unhelpful for the cangas data?  
+  
+
+```{r}
+(cangas_lb <- BoxCox.lambda(cangas))
+autoplot(BoxCox(cangas,cangas_lb))
+```
+
+```{r}
+autoplot(cangas)
+```
+  
+* The transformation does not seem to have effect due to the dependency on lambda. A good lambda value makes the size of the seasonal variation about the same across the series.  
+* Seasonality, while it exists in this data, is too varying in value to have a good lambda. 
+ 
+### 3.3
+  
+#### What Box-Cox transformation would you select for your retail data (from Exercise 3 in Section 2.10)?
+  
+```{r}
+retaildata <- read_excel('retail.xlsx', skip=1)
+myts <- ts(retaildata[,"A3349640L"],frequency=12, start=c(1982,4))
+```
+
+```{r}
+(myts_lb <- BoxCox.lambda(myts))
+autoplot(BoxCox(myts,myts_lb))
+```
+
+```{r}
+autoplot(myts)
+```
+     
+* It does appear the BoxCox transformation had effect on the data.
+   
+```{r}
+forecast1 <- rwf(myts, drift =TRUE, lambda = myts_lb, h=50, level=80)
+forecast2 <- rwf(myts, drift =TRUE, lambda = myts_lb, h=50, level=80, biasadj = TRUE)
+
+autoplot(myts) +
+  autolayer(forecast1, series= 'Simple Back Transformation') +
+  autolayer(forecast2, series= 'Bias Adjusted', PI=FALSE) +
+  guides(color =guide_legend(title = 'Model Forecast'))
+```
+  
+* In this instance, I think the simple back transformation matches the flow of the data.  The bias adjusted values rise too quickly when looking at the previous values.   
+    
+### 3.8  
+  
+#### For your retail time series (from Exercise 3 in Section 2.10):
+  
+##### a. Split the data into two parts using:
+```{r}
+myts.train <- window(myts, end=c(2010,12))
+myts.test <- window(myts, start=2011)
+```
+##### b. Check that your data have been split appropriately by producing the following plot.  
+```{r}
+autoplot(myts) +
+autolayer(myts.train, series="Training") +
+autolayer(myts.test, series="Test")
+```
+##### c. Calculate forecasts using snaive applied to myts.train.  
+```{r}
+fc <- snaive(myts.train)
+```
+##### d. Compare the accuracy of your forecasts against the actual values stored in myts.test.  
+```{r}
+accuracy(fc,myts.test)
+```
+##### e. Check the residuals.
+Do the residuals appear to be uncorrelated and normally distributed?
+```{r}
+checkresiduals(fc)
+```
+  
+* A Q value of 1011.9 suggests auto correlations.
+* The Histogram does appear to have a bit of a right skew 
+* The ACF plot does appear to show the start of seasonality
+
+
+##### f. How sensitive are the accuracy measures to the training/test split?
+
+```{r}
+mean1 <- meanf(myts.train,h=50)
+forecast1 <- rwf(myts.train, h=50)
+forecast2 <- rwf(myts.train, drift =TRUE, h=50)
+
+autoplot(myts.train) +
+autolayer(mean1, series="Mean") +
+autolayer(forecast1, series="Naive")+
+autolayer(forecast2, series = "Drift")+
+guides(colors=guide_legend(title = "Forecasts"))
+```
+
+* It appears the mean error and MPE are highly sensitive
+* The other values are not as sensitive or show a wide range between the values.    
+* The Drift model does appear to be closer now than the other values. 
+
