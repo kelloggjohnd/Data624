@@ -1,0 +1,196 @@
+---
+title: "Data 624 Assignment 4"
+author: "John Kellogg"
+date: "3/6/2021"
+output: 
+ html_document:
+  code_folding: hide
+  toc: true
+  toc_float: 
+    collapsed: true
+    smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(corrplot)
+library(tidyverse)
+library(forecast)
+library(caret)
+library(Amelia)
+library(naniar)
+library(data.table)
+```
+
+## Exercise 3.1
+
+The UC Irvine Machine Learning Repository6 contains a data set related
+to glass identification. The data consist of 214 glass samples labeled as one
+of seven class categories. There are nine predictors, including the refractive
+index and percentages of eight elements: Na, Mg, Al, Si, K, Ca, Ba, and Fe.
+
+```{r glass}
+library(mlbench)
+data(Glass)
+str(Glass)
+```
+
+### (a)
+Using visualizations, explore the predictor variables to understand their distributions as well as the relationships between predictors.
+
+```{r}
+head(Glass)
+Glass_sub <- subset(Glass, select = -Type)
+predictors <- colnames(Glass)
+
+par(mfrow = c(3,3))
+for(i in 1:9) {
+  hist(Glass_sub[,i],main = predictors[i])
+}
+```
+
+* There is a lot of variation between the variables.
+* Aluminum, Silicon, Sodium being the closest to normal
+* Iron, Barium, Potassium appear to be the farthest from normal 
+* Magnesium is the only bipolar distribution
+
+```{r}
+corrplot.mixed(cor(Glass_sub[,1:9]), lower.col = "black", number.cex = .7)
+```  
+  
+* There does seem to be relationship between some the variables.  
+  * Calcium and the Refractive Index (RI) have the strongest postive relationship
+  * Magnesium & Barium, Magnesium & Calcium, Refractive Index & Silicon have the strongest negative relationship
+  
+    
+### (b)
+Do there appear to be any outliers in the data? Are any predictors skewed?
+
+```{r}
+Glass_gather <- Glass %>%
+  pivot_longer(-Type, names_to = "predictors", values_to = "measurement", values_drop_na = TRUE) %>%
+  mutate(predictors = as.factor(predictors))
+
+par(mfrow = c(3,3))
+for(i in 1:9) {
+  boxplot(Glass_sub[,i],main = predictors[i], horizontal = TRUE)
+}
+
+Glass_gather %>%
+  filter(predictors == 'Na'|predictors == 'K'|predictors == 'Ba'|predictors == 'Ca')%>%
+  ggplot(aes(x=Type, y=measurement, color=predictors))+
+  geom_jitter()+
+  scale_color_brewer(palette = "Set1") +
+  theme_light()  
+```
+
+* Seperated out Silicon to see the other elememts clearer
+* There does seem to be outliers in most of the elements with the heaviest in Calcium, Potassium, Sodium, and Barium
+* Appears most of the outliers are in Type 5
+  *Except for Calcium where type 2 holds a lot of outliers
+  
+```{r}
+par(mfrow = c(3,3))
+for(i in 1:9) {
+  hist(Glass_sub[,i],main = predictors[i])
+}
+```  
+  
+* Most elements have a stong left tails
+  *Barium, Iron, & Potassium are ther strongest
+* Magnesium is Bimodal
+  
+### (c)
+Are there any relevant transformations of one or more predictors that might improve the classification model?
+```{r}
+glass_process <- preProcess(Glass, method=c('BoxCox', 'center', 'scale'))
+glass_update<- predict(glass_process, Glass)
+
+par(mfrow = c(3,3))
+for(i in 1:9) {
+  hist(glass_update[,i],main = predictors[i])
+}
+
+par(mfrow = c(3,3))
+for(i in 1:9) {
+  boxplot(glass_update[,i],main = predictors[i], horizontal = TRUE)
+}
+```
+
+* BoxCox had the most effect on elements not too far from normal
+* For items such as Iron, the skew is too far left tailed for the transform to have major effect.
+  * Looking at the data for Iron, there is a LOT of zero values which affected the transform.
+  
+## Exercise 3.2  
+The soybean data can also be found at the UC Irvine Machine Learning
+Repository. Data were collected to predict disease in 683 soybeans. The 35
+predictors are mostly categorical and include information on the environmental
+conditions (e.g., temperature, precipitation) and plant conditions (e.g., left
+spots, mold growth). The outcome labels consist of 19 distinct classes.  
+  
+### (a) 
+Investigate the frequency distributions for the categorical predictors. Are
+any of the distributions degenerate in the ways discussed earlier in this
+chapter?
+
+```{r}
+data("Soybean")
+Soybean = Soybean
+```
+
+```{r}
+nearZeroVar(Soybean)
+names(Soybean[,nearZeroVar(Soybean)])
+```
+
+```{r}
+summary(Soybean[19])
+```
+```{r}
+summary(Soybean[26])
+```
+```{r}
+summary(Soybean[28])
+```
+
+* all of these values have the ratio of most prevalent to second prevalent value under the 10% ratio.
+
+### (b) 
+Roughly 18% of the data are missing. Are there particular predictors that
+are more likely to be missing? Is the pattern of missing data related to
+the classes?
+
+```{r}
+Soybean %>%
+  group_by(Class)%>%
+  gg_miss_fct(Class)
+```
+
+* The Missing predictors to seem to be in specific variables.  
+  * 2-4-d-injury being the one with the most missing.
+
+### (c) 
+Develop a strategy for handling missing data, either by eliminating
+predictors or imputation.  
+
+```{r}
+#copy dataframe
+Soybean_update <- Soybean
+
+#rewrite dataframe so I control the formating
+fwrite(Soybean,"soybean.temp")
+Soybean_update <- fread("soybean.temp",colClasses = "character")
+
+#updating all columns but class to numberic
+Soybean_update <- Soybean_update %>%
+  mutate_at(vars("date","plant.stand","precip","temp","hail","crop.hist","area.dam","sever","seed.tmt","germ","plant.growth","leaves","leaf.halo","leaf.marg","leaf.size","leaf.shread","leaf.malf","leaf.mild","stem","lodging","stem.cankers","canker.lesion","fruiting.bodies","ext.decay","mycelium","int.discolor","sclerotia","fruit.pods","fruit.spots","seed","mold.growth","seed.discolor","seed.size","shriveling","roots" ),as.numeric)
+
+#setting all NA's to mean of column
+Soybean_update <-Soybean_update %>%
+  mutate_all(~ifelse(is.na(.x), mean(.x, na.rm = TRUE), .x))
+
+summary(Soybean_update)
+```
+
+
+
