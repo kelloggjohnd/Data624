@@ -1,0 +1,384 @@
+---
+title: "Data 624 - Assignment 5"
+author: "John Kellogg"
+date: "3/12/2021"
+output: 
+ html_document:
+  code_folding: hide
+  toc: true
+  toc_float: 
+    collapsed: true
+    smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(fpp2)
+library(readxl)
+library(knitr)
+```
+
+## Assignment
+Complete these questions from the Hyndman Text book:
+7.1, 7.5,7.6, 7.7, 7.8 and 7.9
+
+## 7.1
+Consider the pigs series — the number of pigs slaughtered in Victoria each month.
+
+### a. 
+Use the ses() function in R to find the optimal values of $\alpha$ and $l _{0}$, and
+generate forecasts for the next four months.
+
+```{r}
+sub_pigs <- ses(pigs, h=4)
+summary(sub_pigs)
+```
+  
+* The optimal $\alpha$ is 0.2971
+* The optimal $l _{0}$ is 77260.0561
+
+```{r fig.height = 6, fig.width = 10, fig.align = "center"}
+autoplot(sub_pigs) + theme_minimal()
+```
+  
+### b. 
+Compute a 95% prediction interval for the first forecast using $\hat{y}\pm 1.96s$
+where s is the standard deviation of the residuals. Compare your interval
+with the interval produced by R.
+
+```{r}
+sd <- sd(residuals(sub_pigs))
+ci <- c(Lower = sub_pigs$mean[1] - 1.96*sd, Upper = sub_pigs$mean[1] + 1.96*sd)
+ci_r <- c(sub_pigs$lower[1,2], sub_pigs$upper[1,2])
+names(ci_r) <- c("Lower", "Upper")
+q7.1 <- data.frame(ci_r, ci)
+names(q7.1) <- c("Confidence R", "Confidence Manual")
+
+kable(q7.1, caption = "95% Confidence check")
+```
+  
+* R factors degrees if freedom in calculating variance, thus the numbers are higher.
+   
+## 7.5
+Data set `books` contains the daily sales of paperback and hardcover books at
+the same store. The task is to forecast the next four days’ sales for
+paperback and hardcover books.
+
+### a. 
+Plot the series and discuss the main features of the data.
+
+```{r fig.height = 6, fig.width = 10, fig.align = "center"}
+autoplot(books) + theme_minimal()+
+  labs(title = "Daily Sales of Paperback vs Hardcover")
+```
+  
+* The data does show a upwards trend
+* No Seasonality present
+* Hardcover did start to out sale paperback toward the end of the month
+* Values are very sporadic on both.
+
+### b. 
+Use the ses() function to forecast each series, and plot the forecasts.
+```{r fig.height = 6, fig.width = 10, fig.align = "center"}
+paper_ses <- ses(books[,"Paperback"], h=4) 
+hard_ses <- ses(books[,"Hardcover"], h=4)
+
+autoplot(books[,"Paperback"], series = "Paperback")+
+  autolayer(paper_ses, series = "Paperback")+
+  autolayer(books[,'Hardcover'], series = "Hardcover")+
+  autolayer(hard_ses, series = "Hardcover", PI = FALSE)+
+  theme_minimal()+
+  labs(title = "Daily Sales of Paperback vs Hardcover", subtitle = "Forecast")+
+  ylab("Books")
+
+```
+
+* With the sporadic nature of the data, no clear forecast can be achieved.
+
+### c. 
+Compute the RMSE values for the training data in each case.
+  
+#### Paperback RMSE
+```{r}
+(paper_rmse <- sqrt(mean(residuals(paper_ses)^2)))
+```
+  
+#### Hardcover RMSE 
+```{r}
+(hard_rmse <- sqrt(mean(residuals(hard_ses)^2)))
+```
+
+* The RMSE value for Hardcover is lower and is the better number 
+
+
+## 7.6
+
+### a. 
+Now apply Holt’s linear method to the paperback and hardback series
+and compute four-day forecasts in each case.
+
+```{r fig.height = 6, fig.width = 10, fig.align = "center"}
+paper_holt <- holt(books[,"Paperback"], h=4) 
+hard_holt <- holt(books[,"Hardcover"], h=4)
+
+autoplot(books[,"Paperback"], series = "Paperback")+
+  autolayer(paper_holt, series = "Paperback")+
+  autolayer(books[,'Hardcover'], series = "Hardcover")+
+  autolayer(hard_holt, series = "Hardcover", PI = FALSE)+
+  theme_minimal()+
+  labs(title = "Daily Sales of Paperback vs Hardcover", subtitle = "Forecast with Holt Linear")+
+  ylab("Books")
+```
+  
+* The Holt linear method now gives the forecast the same upwards trajectory we see in the data
+* I would still not call the projection precise enough
+
+### b. 
+
+Compare the RMSE measures of Holt’s method for the two series to
+those of simple exponential smoothing in the previous question.
+
+(Remember that Holt’s method is using one more parameter than SES.)
+Discuss the merits of the two forecasting methods for these data sets.
+
+```{r}
+paper_rmse_holt <- sqrt(mean(residuals(paper_holt)^2))
+hard_rmse_holt <- sqrt(mean(residuals(hard_holt)^2))
+
+rmse_figures <- data.frame(Paperback = c(paper_rmse, paper_rmse_holt),
+                             Hardcover = c(hard_rmse, hard_rmse_holt),
+                             row.names = c("SES", "Holt"))
+
+kable(rmse_figures, caption = "RMSE - SES vs Holt")
+```
+  
+* The Holt method produces a lower RMSE
+* Using this method, Holt method is the one of choice
+
+### c. 
+Compare the forecasts for the two series using both methods. Which do
+you think is best?
+
+```{r}
+books_forecast <- data.frame(Paperback = c(paper_ses$mean[1], paper_holt$mean[1]),
+                             Hardcover = c(hard_ses$mean[1], hard_holt$mean[1]),
+                             row.names = c("SES", "Holt"))
+kable(books_forecast, caption = "SES vs Holt")
+```
+  
+* The Forecasts for Holt Method is higher
+* Choice would fall to Holt of the two
+  
+### d. 
+Calculate a 95% prediction interval for the first forecast for each series,
+using the RMSE values and assuming normal errors. Compare your
+intervals with those produced using ses and holt .
+
+```{r}
+s <- accuracy(paper_holt)[1,"RMSE"]
+RMSE_paper <- c(Lower = paper_holt$mean[1] - 1.96*s, Upper = paper_holt$mean[1] + 1.96*s)
+s <- accuracy(hard_holt)[1,"RMSE"]
+RMSE_hard <- c(Lower = hard_holt$mean[1] - 1.96*s, Upper = hard_holt$mean[1] + 1.96*s)
+
+ses_conf_paper <- round(c(paper_ses$lower[1,2], paper_ses$upper[1,2]),2)
+names(ses_conf_paper) <- c("Lower", "Upper")
+ses_conf_hard <- round(c(hard_ses$lower[1,2], hard_ses$upper[1,2]),2)
+names(ses_conf_hard) <- c("Lower", "Upper")
+
+holt_conf_paper <- round(c(paper_holt$lower[1,2], paper_holt$upper[1,2]),2)
+names(holt_conf_paper) <- c("Lower", "Upper")
+holt_conf_hard <- round(c(hard_holt$lower[1,2], hard_holt$upper[1,2]),2)
+names(holt_conf_hard) <- c("Lower", "Upper")
+
+conf95_figures <- data.frame('RMSE Paperback' = RMSE_paper,
+                             'RMSE Hard Cover' = RMSE_hard,
+                             'SES Paperback' = ses_conf_paper,
+                             'SES Hard Cover' = ses_conf_hard,
+                             'Holt Paperback' = holt_conf_paper,
+                             'Holt Hard Cover' = holt_conf_hard,
+                             row.names = c("Lower", "Upper"))
+conf95_figures <- as.data.frame(t(conf95_figures))
+
+kable(conf95_figures, caption = "95% Confidence comparison")
+```
+
+
+
+## 7.7
+For this exercise use data set eggs , the price of a dozen eggs in the United
+States from 1900–1993. Experiment with the various options in the holt()
+function to see how much the forecasts change with damped trend, or with a
+Box-Cox transformation. Try to develop an intuition of what each argument
+is doing to the forecasts.
+
+[Hint: use h=100 when calling holt() so you can clearly see the
+differences between the various options when plotting the forecasts.]
+
+Which model gives the best RMSE?
+
+```{r fig.height = 6, fig.width = 10, fig.align = "center"}
+egg_holt <- holt(eggs, h=100)
+autoplot(egg_holt)+
+  autolayer(egg_holt$fitted)+
+  theme_minimal()
+```
+
+```{r fig.height = 6, fig.width = 10, fig.align = "center"}
+egg_holt_damp <- holt(eggs, damped = TRUE, h=100)
+autoplot(egg_holt_damp)+
+  autolayer(egg_holt_damp$fitted)+
+  theme_minimal()
+```
+
+```{r fig.height = 6, fig.width = 10, fig.align = "center"}
+egg_holt_lambda <- holt(eggs, lambda = BoxCox.lambda(eggs), h=100)
+autoplot(egg_holt_lambda)+
+  autolayer(egg_holt_lambda$fitted)+
+  theme_minimal()
+```
+
+```{r fig.height = 6, fig.width = 10, fig.align = "center"}
+egg_holt_lambda_damp <- holt(eggs, lambda = BoxCox.lambda(eggs), damped = TRUE, h=100)
+autoplot(egg_holt_lambda_damp)+
+  autolayer(egg_holt_lambda_damp$fitted)+
+  theme_minimal()
+```
+
+```{r}
+e_holt <- accuracy(egg_holt)[2]
+e_damp <- accuracy(egg_holt_damp) [2]
+e_lamb <- accuracy(egg_holt_lambda) [2]
+e_lam_dam <- accuracy(egg_holt_lambda_damp)[2]
+
+answer <- data.frame(Holt = e_holt,
+                     'Holt Damped' = e_damp,
+                     'Holt Lambda' = e_lamb,
+                     'Holt Lambda Damped' = e_lam_dam)
+answer <- as.data.frame(t(answer))
+
+colnames(answer) <- c("Compare")
+
+kable(answer, caption = "Comparison of Holt models")
+```
+
+* The Box Cox Lambda model produced the best RMSE
+* In comparing the other models on graphs alone:
+  * The Fitted model was moving in the direction of the trend, it was too straight to fit the data
+  * The damped model did not move in the direction of the data but in a horizontal line from it
+  * The Box Cox Lambda damped model had more of a curve to the prediction but still moved in a mostly horizontal line and not in the direction of the data
+  * The Box Cox Lambda model moved in the direction of the data and had a slight curve as seen in the data
+
+## 7.8
+Recall your retail time series data (from Exercise 3 in Section 2.10).
+
+```{r}
+retaildata <- read_excel('retail.xlsx', skip=1)
+myts <- ts(retaildata[,"A3349398A"],frequency=12, start=c(1982,4))
+```
+
+
+### a. 
+Why is multiplicative seasonality necessary for this series?
+
+```{r fig.height = 6, fig.width = 10, fig.align = "center"}
+autoplot(myts)+
+  theme_minimal()
+```
+  
+* The Seasonal variations are changing/growing as the time passes
+* Since the seasonality is not steady, multiplicative is required
+
+### b. 
+Apply Holt-Winters’ multiplicative method to the data. Experiment with
+making the trend damped.
+
+```{r}
+myts_multi <- hw(myts, h=100, seasonal = "multiplicative")
+myts_damp <- hw(myts, h=100, seasonal = "multiplicative", damped = TRUE)
+
+autoplot(myts)+
+  autolayer(myts_multi, series = "Holt", PI=FALSE)+
+  autolayer(myts_damp, series = "Holt Damped", PI=FALSE)+
+  theme_minimal()
+```
+  
+### c. 
+Compare the RMSE of the one-step forecasts from the two methods.
+Which do you prefer?
+
+```{r}
+accuracy_multi <- accuracy(myts_multi)[2]
+accuracy_damp <- accuracy(myts_damp)[2]
+
+rmse_compare <- data.frame('Multiplicative'= accuracy_multi,
+                           'Damped'=accuracy_damp)
+rmse_compare <- as.data.frame(t(rmse_compare))
+
+colnames(rmse_compare) <- c("Compare")
+
+kable(rmse_compare, caption = "Comparison of Multiplicative models")
+
+```
+  
+* The standard Multiplicative model yielded better results  
+  
+```{r}
+accuracy(myts_damp)
+```
+
+
+### d. 
+Check that the residuals from the best method look like white noise.
+
+```{r fig.align = "center"}
+checkresiduals(myts_multi)
+```
+  
+* The histogram does look to have a normal distribution
+* Looking at the ACF, there are a lot of levels outside the norm, there may be residuals outside of white noise.
+
+### e. 
+Now find the test set RMSE, while training the model to the end of 2010.
+Can you beat the seasonal naïve approach from Exercise 8 in Section 3.7?
+
+```{r}
+myts.train <- window(myts, end=c(2010, 12))
+myts.test <- window(myts, start=2011)
+```
+
+```{r}
+myts.niave.train <- snaive(myts.train)
+(myts.niave.acc <- accuracy(myts.niave.train,myts.test))
+```
+
+```{r}
+myts.holt.train <- hw(myts.train, seasonal = "multiplicative")
+(myts.holt.acc <- accuracy(myts.holt.train, myts.test))
+```
+  
+* The RMSE for Holt is the better fit in this case
+  * Holt 29.86/49.1
+  * Naive 88.31/127.92
+
+## 7.9
+For the same retail data, try an STL decomposition applied to the Box-Cox
+transformed series, followed by ETS on the seasonally adjusted data. How
+does that compare with your best previous forecasts on the test set?
+
+```{r}
+myts.stl <- stlf(myts.train, lambda = BoxCox.lambda(myts.train))
+accuracy(myts.stl)
+```
+
+```{r fig.height = 8, fig.width = 10, fig.align = "center"}
+myts.ets <- ets(seasadj(decompose(myts.train, "multiplicative")))
+
+autoplot(myts.train, series = "Train")+
+  autolayer(forecast(myts.stl, h=24), series = "STL")+
+  autolayer(forecast(myts.ets, h=24), series = "ETS")+
+  autolayer(myts.test, series = "Test")+
+  theme_minimal()
+```
+
+* The STL model performed better than the ETS model by better fitting the data
+
