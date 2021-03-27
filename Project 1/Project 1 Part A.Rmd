@@ -1,0 +1,71 @@
+---
+title: "Data 624 - Project 1"
+author: "John Kellogg"
+date: "3/22/2021"
+output: 
+ html_document:
+  code_folding: hide
+  toc: true
+  toc_float: 
+    collapsed: true
+    smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(fpp2)
+library(readxl)
+library(knitr)
+library(urca)
+library(lubridate)
+library(tidyverse)
+```
+
+
+```{r atm_data, warning=FALSE}
+data_raw <- read_excel ('./data/ATM624Data.xlsx', col_names = TRUE,
+                        col_types = c('date','text','numeric'))%>%
+  rename(date = DATE, atm = ATM, cash = Cash)%>%
+  mutate(date = as_date(date))
+```
+
+```{r}
+summary(data_raw)
+```
+
+dropping the cases is not possible as need all the dates.  However, I can not imply the location where I can aaccount for missing 'cash' values.  Looking at the data, all the N/A's in the 'ATM' column are at the end and look like they are at the start of the month. I will drop any incomplete case on the 'ATM' row.  It should leave me with data from 	2009-05-01 to 2010-04-30. As the data is in hundereds of dollars and the raw data does not have any decimal points, any decemials will be rounded to zero.
+
+```{r}
+atm <- data_raw
+atm$cash <- imputeTS::na_ma(atm$cash, k=5, weighting = "simple")
+atm <- data_raw[complete.cases(data_raw),]
+
+# as the data is in hundreds of dollars &
+atm <- atm %>%
+  mutate(across(where(is.numeric), round, 0))
+```
+
+```{r}
+atm_ts <- atm %>%
+  group_by(atm)%>%
+  group_map(~ts(.x$cash, start=c(2009, 05,01), frequency = 7))
+
+str(atm_ts)
+```
+
+```{r}
+ggtsdisplay(atm_ts[[1]], points = FALSE, plot.type = "histogram")
+```
+
+```{r}
+ggtsdisplay(atm_ts[[2]], points = FALSE, plot.type = "histogram")
+```
+
+```{r}
+ggtsdisplay(atm_ts[[3]], points = FALSE, plot.type = "histogram")
+```
+
+```{r}
+ggtsdisplay(atm_ts[[4]], points = FALSE, plot.type = "histogram")
+```
+

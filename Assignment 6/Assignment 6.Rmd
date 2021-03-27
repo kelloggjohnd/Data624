@@ -1,0 +1,588 @@
+---
+title: "Assignment 6"
+author: "John Kellogg"
+date: "3/22/2021"
+output: 
+ html_document:
+  code_folding: hide
+  toc: true
+  toc_float: 
+    collapsed: true
+    smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(fpp2)
+library(readxl)
+library(knitr)
+library(urca)
+```
+
+## Assignment
+From the Hyman text book, perform exercises:
+'8.1, 8.2, 8.3, 8.5, 8.6, 8.7'
+
+
+## 8.1
+Figure 8.31 shows the ACFs for 36 random numbers, 360 random numbers
+and 1,000 random numbers.
+  
+
+### a.
+Explain the differences among these figures. Do they all indicate that the
+data are white noise?
+  
+* All 3 Series can be seen as white noise for the following reasons:
+  * Bounds differ based on the length of the time series
+  * In the white noise series we expect 95% of the spikes in ACF to fall within $\pm 2/ \sqrt{T}$where $T$ is the length of the time series  
+  
+### b.
+Why are the critical values at different distances from the mean of zero?
+  
+* The values are a random autocorrelation of positive and negative values around the zero line.
+
+Why are the autocorrelations different in each figure when they each
+refer to white noise?
+
+* As figures are composed of random numbers, it is expected to have random autocorrelation values (positve and negative)
+* Additionally, as the figures are of increasing amount of values, its expected for the values to show smaller magnitudes of fluctuations while still maintaining white noise charactistics. 
+
+## 8.2
+A classic example of a non-stationary series is the daily closing IBM stock
+price series (data set 'ibmclose'). Use R to plot the daily closing prices for
+IBM stock and the ACF and PACF. Explain how each plot shows that the
+series is non-stationary and should be differencing.
+
+```{r}
+autoplot(ibmclose)
+ggtsdisplay(ibmclose)
+```
+  
+* There is a sharp drop in closing prices around time 120 and continuing to the end.
+* The ACF plot shows a distict seasonal autocorrelation at all lags
+* the PACF plot only shows strong autocorrelation at lag 1
+
+```{r}
+ndiffs(ibmclose)
+```
+
+```{r}
+ggtsdisplay(ibmclose %>% log()  %>% diff(1))
+```
+  
+```{r}
+ibmclose %>% ur.kpss()%>% summary()
+```
+   
+```{r}
+ibmclose %>% diff() %>% ur.kpss()%>% summary()
+```
+  
+* The `ndiff` test indicates a single differnce should be used
+* After performing the log transformation and using a difference of 1 we start to see more of a white noise look
+* We see the change in the test statistic by using the single difference. 
+  * Before the value of 3.6236 is high and indicates the data is not stationary
+  * After the value of 0.4702 falls with in the range of stationary data
+
+## 8.3
+For the following series, find an appropriate Box-Cox transformation and
+order of differencing in order to obtain stationary data.
+
+### a. `usnetelec`
+```{r}
+autoplot(usnetelec)
+ggtsdisplay(usnetelec)
+```
+    
+* Plot shows an upward trend
+* ACF and PACF shows the autocorrelation comes from the previous value.
+  * Potentially difference at lag 1
+  
+```{r}
+autoplot(BoxCox(usnetelec, (BoxCox.lambda(usnetelec))))
+```
+  
+* Standard BoxCox transform did not effect the data enough
+* Will need to try other methods
+```{r}
+ndiffs(usnetelec)
+```
+  
+```{r}
+ggtsdisplay(diff(usnetelec))
+Box.test(diff(usnetelec))
+```
+  
+```{r}
+ggtsdisplay(usnetelec %>% sqrt() %>% diff(1))
+Box.test(sqrt(diff(usnetelec)))
+```
+  
+* SQRT ACF and PACF had greater variation and the p value is near zero.
+* Either transformation works as both produce stationary data
+* I would recommend the single difference model, less changes to the orginal data
+
+### b. `usgdp`
+
+```{r}
+autoplot(usgdp)
+ggtsdisplay(usgdp)
+```
+  
+* Data shows an upwards trend
+* PACF has spike at Lag 1
+* ACF shows autocorrelation comes from the previous value.
+  
+```{r}
+autoplot(BoxCox(usgdp, (BoxCox.lambda(usgdp))))
+```
+
+```{r}
+ndiffs(usgdp)
+```
+  
+* Its interesting we now have a recommended 2 differentials
+  
+```{r}
+ggtsdisplay(diff(usgdp))
+Box.test(diff(usgdp))
+```
+
+* Single diff gets us close, however, we already knew we should have 2 transformations
+* We still see lag spikes but this time we start to see the spike at lag 2, 9, & 12
+
+```{r}
+ggtsdisplay(usgdp  %>% BoxCox(BoxCox.lambda(usgdp)) %>% diff(1))
+usgdp %>% BoxCox(BoxCox.lambda(usgdp)) %>% diff(1) %>% ur.kpss() %>% summary()
+```
+
+* Combining the two gives us a more stablized ACF and PACF
+* There is still a large spike at lag 12, however, the other spikes have dropped under acceptable levels
+
+### c. `mcopper`
+
+```{r}
+autoplot(mcopper)
+ggtsdisplay(mcopper)
+```
+  
+* The same trend as the last two models
+  * Data shows an upwards trend
+  * PACF has spike at Lag 1
+  * ACF shows autocorrelation comes from the previous value. 
+
+```{r}
+ndiffs(mcopper)
+```
+
+```{r}
+autoplot(BoxCox(mcopper, (BoxCox.lambda(mcopper))))
+bc.lambda <- BoxCox.lambda(mcopper)
+mcopper_lam <- mcopper %>% BoxCox(bc.lambda) 
+ggtsdisplay(mcopper_lam)
+```
+
+* No real change with a straight BoxCox transform
+  
+```{r}
+ggtsdisplay(diff(mcopper))
+Box.test(diff(mcopper))
+```
+
+* Same as above, the single diff does not change the data enough
+
+```{r}
+bc.lambda <- BoxCox.lambda(mcopper)
+mcopper_lam <- mcopper %>% BoxCox(bc.lambda) %>% diff(1) 
+ggtsdisplay(mcopper_lam)
+Box.test(mcopper_lam)
+```
+
+```{r}
+mcopper_lam %>% ur.kpss() %>% summary()
+```
+  
+* For this dataset I would recommend a 1 diff BoxCox Transform
+* The ACF & PACF seems more stable in this model vs just the BoxCox or 1 diff
+
+### d. `enplanements`
+
+```{r}
+autoplot(enplanements)
+ggtsdisplay(enplanements)
+```
+
+* Data presents a strong seasonality and upwards trend
+* There is a spike at lag 1 of the PACF which would indicate a diff model will be required later
+  * Possible two lags (first at 12, second at 1)
+
+```{r}
+ndiffs(enplanements)
+```
+
+```{r}
+autoplot(BoxCox(enplanements, (BoxCox.lambda(enplanements))))
+ggtsdisplay(BoxCox(enplanements, BoxCox.lambda(enplanements)))
+```
+  
+* BoxCox transform no major effect and did not remove the seasonality or stabilize the data. 
+
+
+```{r}
+ggtsdisplay(diff(enplanements))
+Box.test(diff(enplanements))
+```
+  
+* Appling a single diff model had more effect on stabilizing the data
+* There is still a minor multiplicative seasonality
+
+```{r}
+lambda <- BoxCox.lambda(enplanements)
+transformdata <- BoxCox(enplanements, lambda)
+transformdata %>% diff(lag = frequency(enplanements)) %>% diff() %>%  ggtsdisplay()
+```
+
+* This model produces the most stable data using frequency and diff
+
+### e. `visitors`
+
+```{r}
+autoplot(visitors)
+ggtsdisplay(visitors)
+```
+  
+* Data shows an upwards trend, strong seasonality and multiplicative
+* PACF has spike at Lag 1, however, has other spikes of note
+
+```{r}
+ndiffs(visitors)
+```  
+
+```{r}
+autoplot(BoxCox(visitors, (BoxCox.lambda(visitors))))
+ggtsdisplay(BoxCox(visitors, BoxCox.lambda(visitors)))
+```
+
+```{r}
+ggtsdisplay(diff(visitors))
+Box.test(diff(visitors))
+```
+
+```{r}
+transformdata %>% diff() %>%  diff(lag = frequency(visitors)) %>% ggtsdisplay()
+```
+
+* Had to try method from above, however, it does not work as well in this case
+
+```{r}
+ggtsdisplay(visitors %>% BoxCox(BoxCox.lambda(visitors)) %>% diff(12) %>% diff(1))
+Box.test(visitors %>% BoxCox(BoxCox.lambda(visitors))  %>% diff(12) %>% diff(1),lag=24, fitdf=0, type="Lj")
+visitors %>% BoxCox(BoxCox.lambda(visitors))  %>% diff(12) %>% diff(1) %>% ur.kpss() %>% summary()
+```
+
+* Combining the BoxCox with two sets of diff transforms (one at 12 and the second at 1) brings about a better stability
+
+## 8.5
+For your retail data (from Exercise 3 in Section 2.10), find the appropriate
+order of differencing (after transformation if necessary) to obtain stationary
+data.
+
+```{r}
+retaildata <- read_excel('retail.xlsx', skip=1)
+myts <- ts(retaildata[,"A3349398A"],frequency=12, start=c(1982,4))
+autoplot(myts)
+ggseasonplot(myts, polar = TRUE)
+ggseasonplot(myts)
+ggtsdisplay(myts)
+```
+
+* Upwards trend multiplicative trend
+* Strong seasonaly
+
+```{r}
+autoplot(BoxCox(myts, (BoxCox.lambda(myts))))
+ggtsdisplay(BoxCox(myts, BoxCox.lambda(myts)))
+```
+
+```{r}
+ggtsdisplay(usgdp  %>% BoxCox(BoxCox.lambda(myts)) %>% diff(1))
+usgdp %>% BoxCox(BoxCox.lambda(myts)) %>% diff(1) %>% ur.kpss() %>% summary()
+```
+  
+* Sometimes the simpliest methods work best. (KISS principle)
+* Data is now stationary using:
+  * BoxCox Transform with a single diff model
+  
+## 8.6
+Use R to simulate and plot some data from simple ARIMA models.
+### a. 
+Use the following R code to generate data from an AR(1) model with $\phi _{1} = 0.6$
+and $\sigma ^{2} = 1$ . The process starts with $y_{1} = 0$.
+
+```{r}
+y <- ts(numeric(100))
+e <- rnorm(100)
+for(i in 2:100)
+   y[i] <- 0.6*y[i-1] + e[i]
+
+autoplot(y)
+```
+  
+### b.
+Produce a time plot for the series. How does the plot change as you
+change $\phi _{1}$?
+
+```{r}
+ar <- function(theta){
+  y <- ts(numeric(100))
+  e <- rnorm(100)
+  for(i in 2:100){
+    y[i] <- 0.6*y[i-1] + e[i]}
+  return(y)
+}
+```
+
+```{r}
+set.seed(346)
+
+data <- list()
+i<- 0
+
+phi_values <- runif(2, min = 0.0001, max = .9)
+
+for (phi in phi_values)
+  {
+  i<- i+1
+  data[[i]] <- ar(phi)
+  }
+
+data2 <- do.call(cbind,data)
+
+colnames(data2) <- paste("phi=", phi_values, sep = '')
+
+autoplot(data2) + ylab('Data')
+
+autoplot(data2, series = "b values")+
+  autolayer(y, series = "a values")+
+  ylab('Data')
+```
+
+```{r}
+b_data_low <- data2[,1]
+b_data_high <- data2[,2]
+
+par(mfrow=c(1,3))
+acf(y, main="A data");
+acf(b_data_low, main = "B low");
+acf(b_data_high, main = "B high")
+```
+
+* As the $\phi$ value rises the ACF becomes more pronounced.  
+  * If the $\phi$ go any larger, it will start to extend outside the significant area for autocorrelation 
+
+### c.
+Write your own code to generate data from an MA(1) model with
+$\Theta _{1} = 0.6$ and $\sigma ^{2} = 1$.
+
+```{r}
+ma <- function(theta){
+  y <- ts(numeric(100))
+  e <- rnorm(100)
+  for(i in 2:100){
+    y[i] <- theta*e[i-1] + e[i]}
+  return(y)
+}
+```
+
+```{r}
+matest <- ma(0.6)
+autoplot(matest)
+```
+
+### d.
+Produce a time plot for the series. How does the plot change as you
+change $\phi _{1}$?
+
+```{r}
+ma_2 <- ma(.1)
+ma_3 <- ma(1)
+ma_4 <- ma(4)
+
+autoplot(matest, series = "Theta 0.6")+
+  autolayer(ma_2, series = "Theta 0.1")+
+  autolayer(ma_3, series = "Theta 1")+
+  autolayer(ma_4, series = "Theta 4")+
+  ylab('Data')
+```
+
+```{r}
+autoplot(cbind(matest, ma_2, ma_3, ma_4), facet = TRUE)+
+  ylab('Data')
+```
+  
+### e.
+Generate data from an ARMA(1,1) model with $\phi _{1} = 0.6$, $\Theta _{1} = 0.6$
+and $\sigma ^{2} = 1$.
+  
+```{r}
+y <- ts(numeric(100))
+e <- rnorm(100)
+
+for(i in 2:100){
+    y[i] <- 0.6*y[i-1] + 0.6*e[i-1] + e[i]}
+
+autoplot(y)
+```
+
+  
+### f.
+Generate data from an AR(2) model with $\phi _{1} = -0.8$, \phi _{2} = 0.3
+and $\sigma ^{2} = 1$. (Note that these parameters will give a non-stationary series.)
+  
+```{r}
+y2 <- ts(numeric(100))
+e <- rnorm(100)
+
+for(i in 3:100){
+  y2[i] <- (-0.8)*y2[i-1] + 0.3*y2[i-2] + e[i]
+}
+autoplot(y2)
+```
+
+### g.
+Graph the latter two series and compare them.
+
+```{r}
+ggAcf(y)
+ggAcf(y2)
+```
+
+
+## 8.7
+Consider `wmurders`, the number of women murdered each year (per 100,000
+standard population) in the United States.
+
+### a. 
+By studying appropriate graphs of the series in R, find an appropriate
+ARIMA(p, d, q) model for these data.
+
+```{r}
+wmurders %>% 
+  ggtsdisplay()
+```
+
+* There is an upwards trend until around 1973, which stabilizes until 1995 when it starts to steadily drop off
+* The ACF ploy shows the lags are steady and drop below zero around lag 14.
+* The PACF spikes at lag 1.
+* There is no evidence of seasonality or changing variance, BoxCox can be skipped.
+* According to this first plot, a single differencing should make the data stationary.
+
+```{r}
+wmurders %>% ndiffs()
+```
+* Interesting. The initial data plot does not support this finding
+
+```{r}
+wmurders %>% diff() %>% ur.kpss(lags = "short") %>% summary()
+wmurders %>% diff() %>% ggtsdisplay()
+```
+
+```{r}
+wmurders %>% diff() %>% diff() %>% ur.kpss(lags = "short") %>% summary()
+wmurders %>% diff() %>% diff() %>% ggtsdisplay()
+```
+  
+* The test statistic for a single diff is acceptable.
+* Not sure if the second diff is required and may cause over diff.
+
+```{r}
+fit <- Arima(wmurders, c(1,1,0))
+checkresiduals(fit)
+fit
+```
+
+```{r}
+fit2 <- Arima(wmurders, c(0,1,2))
+checkresiduals(fit2)
+fit2
+```
+
+* I think either model works for this data
+* The second model fits the residuals better
+* The first model is simplier and has a lower p value
+* KISS method wins
+  
+### b. 
+Should you include a constant in the model? Explain.
+  
+* No, a constant should not be included
+* When d>0, the Arima function will be set the constant equal to zero
+  
+### c. 
+Write this model in terms of the backshift operator.
+
+$(1-\phi _{1} B-\phi _{2}B^{2})y_{t}=c+\varepsilon _{t}$
+  
+### d. 
+Fit the model using R and examine the residuals. Is the model
+satisfactory?
+  
+* Model fit in question a.
+* The p value is insignificent 
+* Autocorrelations are acceptable across all lags
+* Model is acceptable
+  
+### e. 
+Forecast three times ahead. Check your forecasts by hand to make sure
+that you know how they have been calculated.
+
+```{r}
+fit
+```
+
+```{r}
+wm3 <- forecast(fit, h=3)
+wm3
+```
+
+```{r}
+res <- resid(fit)
+len <- length(res)
+len_1 <- length(res)-1
+et <- res[len]
+et_1 <- res[len-1]
+ar1 <- coef(fit)["ar1"]
+
+f1 <- wmurders[len] + (ar1 * (wmurders[len]-wmurders[len_1]))-0.0000025
+f2 <- f1 + (ar1 * (f1 - wmurders[len]))
+f3 <- f1 + (ar1 * (f2 - f1))
+```
+
+```{r}
+print(paste('1st Forecast is: ', f1))
+print(paste('2nd Forecast is: ', f2))
+print(paste('3rd Forecast is: ', f3))
+```
+
+
+### f. 
+Create a plot of the series with forecasts and prediction intervals for the
+next three periods shown.
+
+```{r}
+autoplot(forecast(wm3))
+```
+
+### g. 
+Does auto.arima() give the same model you have chosen? If not, which
+model do you think is better?
+
+```{r}
+auto_fit <- auto.arima(wmurders, stepwise = FALSE, approximation = FALSE)
+autoplot(forecast(auto_fit, 3))
+```
+  
+* The Auto method did NOT chose the same model as I did.
+* Even though the forecast of the auto-method "seems" to fit the data better, I would still go with the first model.
+* I don't see a reason to stray away from the KISS model to accept the auto model.
