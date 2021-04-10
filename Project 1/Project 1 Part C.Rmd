@@ -1,0 +1,264 @@
+---
+title: "Project 1 - Part C"
+author: "John Kellogg"
+date: "3/29/2021"
+output: 
+ html_document:
+  code_folding: hide
+  toc: true
+  toc_float: 
+    collapsed: true
+    smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(fpp2)
+library(readxl)
+library(knitr)
+library(urca)
+library(lubridate)
+library(tidyverse)
+library(grid)
+library(gridExtra)
+library(imputeTS)
+```
+
+## Part 2 - Forecasting Waterflow
+### Assignment Question
+Part C consists of two data sets.  These are simple 2 columns sets, however they have different time stamps.  Your optional assignment is to time-base sequence the data and aggregate based on hour (example of what this looks like, follows).  Note for multiple recordings within an hour, take the mean.  Then to determine if the data is stationary and can it be forecast.  If so, provide a week forward forecast and present results via RPubs and .rmd and the forecast in an Excel readable file.  
+
+**Note**
+As this optional assignment is mainly focused on data management and determining if it is better to forecast the pipes together or separate, I will be using the auto-arima function.
+
+### Data Ingest
+```{r pipes_data, warning=FALSE}
+data_raw_1 <- read_excel ('./data/Waterflow_Pipe1.xlsx', col_names = TRUE, col_types = c("date", "numeric"))
+data_raw_2 <- read_excel ('./data/Waterflow_Pipe2.xlsx', col_names = TRUE, col_types = c("date", "numeric"))
+
+colnames(data_raw_1)= c("DateTime", "FLOW")
+colnames(data_raw_2)= c("DateTime", "FLOW")
+```
+
+### Pipe 1 
+
+#### Data Management
+```{r pipe1}
+pipe1 <- data_raw_1
+```
+
+```{r}
+pipe1 <- pipe1%>%
+  mutate(Date = date(DateTime),
+         Hour = hour(DateTime)+1)%>%
+  group_by(Date, Hour)%>%
+  summarise(FLOW = mean(FLOW))%>%
+  ungroup()%>%
+  mutate(DateTime = ymd_h(paste(Date, Hour)))%>%
+  select(DateTime, FLOW)
+
+head(pipe1)
+```
+
+* The data is now in a standard DateTime
+* I created the Mean value of each hour within the dataset
+
+```{r}
+summary(pipe1)
+```
+
+```{r outliers_pipe1}
+boxplot(pipe1$FLOW,
+        ylab = "Flow Rate")
+out <- boxplot.stats(pipe1$FLOW)$out
+out
+```
+  
+* There is an outlier but it's not too far outside the range of the 3rd Q.  I will leave it.
+
+#### Time Series and transforms  
+```{r}
+tspipe1 <- ts(pipe1$FLOW, frequency = 24, start = c(2015,1))
+```
+
+```{r}
+grid.arrange(nrow=2,
+  ggseasonplot(tspipe1),
+  ggsubseriesplot(tspipe1))
+
+ggtsdisplay(tspipe1)
+#ndiffs(tspipe1)
+```
+  
+
+  
+```{r pipe1_summary}
+tspipe1 %>% ur.kpss %>% summary
+```
+
+* ndiffs stated O diffs required
+* Data seems to be near white noise and stationary without any changes
+* No significant lags 
+
+```{r pipe1_auto}
+tspipe1_lambda <- BoxCox.lambda(tspipe1)
+auto_pipe1 <- auto.arima(tspipe1, approximation = FALSE, lambda = tspipe1_lambda)
+summary(auto_pipe1)
+```
+  
+* Auto Arima returned with (0,0,0)
+* If I put in the value of d=1, the model returns with (5,1,0)
+  * However, as the Diff check stated there was no diff required, forcing a first order diff may be over-fitting the model
+  
+### Pipe 2 
+  
+#### Data Management
+```{r pipe2}
+pipe2 <- data_raw_2
+```
+
+```{r summary2}
+summary(pipe2)
+```
+
+```{r outliers_pipe2}
+boxplot(pipe2$FLOW,
+        ylab = "Flow Rate")
+out <- boxplot.stats(pipe2$FLOW)$out
+out
+```
+
+* No major outliers 
+* Data was already in a single value for each hour
+* Ensured the Date/Time format matched Pipe 1
+
+#### Time Series and Transforms
+  
+```{r}
+tspipe2 <- ts(pipe2$FLOW, frequency = 24, start = c(2015,1))
+```
+
+```{r}
+grid.arrange(nrow=2,
+  ggseasonplot(tspipe2),
+  ggsubseriesplot(tspipe2))
+
+ggtsdisplay(tspipe2)
+#ndiffs(tspipe2)
+```
+
+* ndiffs stated O diffs required
+* Data seems to be near white noise and stationary without any changes
+* We do have significant lags (specifically around lag 15) 
+
+```{r}
+tspipe2 %>% ur.kpss %>% summary
+```
+
+
+
+```{r}
+tspipe2_lambda <- BoxCox.lambda(tspipe2)
+auto_pipe2 <- auto.arima(tspipe2, approximation = FALSE, lambda = tspipe2_lambda)
+summary(auto_pipe2)
+```
+
+* Interesting the auto model is mostly the same with a seasonal variant added.
+* Again with Order of first-differencing (d=1) added, the model returned with (5,1,0)(1,0,0)
+  * I think this is over-fit and over worked.
+  
+### Pipes Joined
+
+#### Data Management
+```{r}
+pipe_join <- rbind(pipe1, pipe2)
+
+pipe_join <- pipe_join%>%
+  mutate(Date = date(DateTime),
+         Hour = hour(DateTime)+1)%>%
+  group_by(Date, Hour)%>%
+  summarise(FLOW = mean(FLOW))%>%
+  ungroup()%>%
+  mutate(DateTime = ymd_h(paste(Date, Hour)))%>%
+  select(DateTime, FLOW)
+
+head(pipe_join)
+```
+
+```{r}
+summary(pipe_join)
+```
+
+```{r outliers_joint}
+boxplot(pipe_join$FLOW,
+        ylab = "Flow Rate")
+out <- boxplot.stats(pipe_join$FLOW)$out
+out
+```
+  
+#### Time Series and Transforms
+  
+```{r}
+tspipeall <- ts(pipe_join$FLOW, frequency = 24, start = c(2015,1))
+```
+
+```{r}
+grid.arrange(nrow=2,
+  ggseasonplot(tspipeall),
+  ggsubseriesplot(tspipeall))
+
+ggtsdisplay(tspipeall)
+#ndiffs(tspipeall)
+```
+
+
+
+```{r}
+tspipeall %>% ur.kpss %>% summary
+```
+
+* ndiffs stated 1 diffs required
+* Difficult to tell if the data is near white noise and stationary without any changes
+  
+```{r}
+lambda <- BoxCox.lambda(tspipeall)
+ggtsdisplay(tspipeall  %>% BoxCox(lambda))
+ur.kpss(tspipeall %>% BoxCox(lambda) %>% diff()) %>% summary
+```
+
+```{r}
+ggtsdisplay(diff(tspipeall, 2), points = FALSE)
+```
+
+
+```{r}
+autopipe_all <- auto.arima(tspipeall, lambda = lambda, approximation = FALSE)
+summary(autopipe_all)
+```
+
+* Pipe 1 (0,0,0)
+* Pipe 2 (0,0,0)(1,0,0)[24]
+* Combined (0,1,1)(1,0,0)[24]
+
+```{r}
+pipe_forecast_1 <- forecast(auto_pipe1, h = 7*24)
+autoplot(pipe_forecast_1)
+```
+
+
+
+```{r}
+pipe_forecast_2 <- forecast(auto_pipe2, h = 7*24)
+autoplot(pipe_forecast_2)
+```
+
+
+
+```{r}
+pipe_forecast_3 <- forecast(autopipe_all, h = 7*24)
+autoplot(pipe_forecast_3)
+```
+
+* Without knowing the infrastructure behind the pipes (are they sub-pipes from a master pipe, are they parallel pipes, etc...) I would caution combining the two.
+* The Forecasts from the individual pipes is cleaner
+

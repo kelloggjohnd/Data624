@@ -1,0 +1,151 @@
+---
+title: "Project 1 Part B"
+author: "John Kellogg"
+date: "3/28/2021"
+output: 
+ html_document:
+  code_folding: hide
+  toc: true
+  toc_float: 
+    collapsed: true
+    smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(fpp2)
+library(readxl)
+library(knitr)
+library(urca)
+library(lubridate)
+library(tidyverse)
+library(grid)
+library(gridExtra)
+library(imputeTS)
+```
+
+## Part B - Forecasting Power
+### Assignment Question
+Part B consists of a simple dataset of residential power usage for January 1998 until December 2013.  Your assignment is to model these data and a monthly forecast for 2014.  The data is given in a single file. The variable ‘KWH’ is power consumption in Kilowatt hours, the rest is straight forward.
+  
+### Data Management
+```{r atm_data, warning=FALSE}
+data_raw_b <- read_excel ('./data/ResidentialCustomerForecastLoad-624.xlsx', col_names = TRUE)%>%
+  rename(DATE = 'YYYY-MMM')%>%
+  mutate(DATE=as_date(paste(DATE, '01', sep='-'), format='%Y-%b-%d', tz='UTC')) 
+```
+
+```{r}
+summary(data_raw_b)
+```
+
+* We need to check for outliers as there is a large jump from the min to the 1st Q.
+* There is a single NA value
+  * k-nearest neighbor will be used again
+```{r outliers}
+boxplot(data_raw_b$KWH,
+        ylab = "KWH")
+out <- boxplot.stats(data_raw_b$KWH)$out
+out
+```
+
+* We do have an outlier which needs to be adjusted.
+* I will zero out the value and apply the same k-nearest neighbor as with the other NA value with a 5 level Weighted moving average..
+
+```{r outlier_repair}
+data_raw_b <- data_raw_b%>%
+  mutate(KWH = na_if(KWH, out))
+```
+
+```{r na_repair}
+data_raw_b$KWH <- na_ma(data_raw_b$KWH, k = 5, weighting = "simple")
+```
+
+```{r}
+summary(data_raw_b)
+```
+
+* The data now looks clean and ready for transforms
+
+### Data Transforms
+
+```{r time_series}
+pwr <- data_raw_b
+tspwr <- ts(pwr$KWH, frequency = 12, start = c(1998,1))
+```
+
+```{r}
+grid.arrange(nrow=2,
+  ggseasonplot(tspwr),
+  ggsubseriesplot(tspwr))
+
+ggtsdisplay(tspwr)
+```
+  
+#### Box-Cox Transform
+```{r}
+pwr_lambda <- BoxCox.lambda(tspwr)
+pwrbc <- BoxCox(tspwr, lambda = pwr_lambda)
+
+grid.arrange(nrow=2,
+  ggseasonplot(pwrbc),
+  ggsubseriesplot(pwrbc))
+
+ggtsdisplay(pwrbc)
+pwrbc %>% ur.kpss() %>% summary
+```
+
+```{r diff_check}
+ndiffs(tspwr)
+ndiffs(pwrbc)
+```
+
+* I am not seeing a major change in the data using a Box-Cox transform.  
+* I do see both formats still require at least one diff.
+* The Test Statistic is very high
+
+#### No Box-Cox with a single Diff
+```{r}
+ggtsdisplay(diff(tspwr, 12), points = FALSE)
+tspwr %>% diff %>% ur.kpss() %>% summary
+```
+
+#### Box-Cox with a single Diff
+```{r}
+ggtsdisplay(diff(pwrbc, 12), points = FALSE)
+pwrbc %>% diff %>% ur.kpss() %>% summary
+```
+
+* I think my final choice is to use the non Box-Cox data set going forward.  I am not seeing enough justification to use the transform.
+* The Lag of 12 does seem to be appropriate to the set.
+ * An MA term seems appropriate as there is 2 sets of decreasing lags at multiple of 12 
+ 
+```{r}
+pwr_model <- Arima(tspwr, order = c(1,1,2), seasonal=c(1,1,2))
+summary(pwr_model)
+checkresiduals(pwr_model)
+```
+
+```{r}
+auto_model <- auto.arima(tspwr, d=1, approximation = FALSE)
+summary(auto_model)
+checkresiduals(auto_model)
+```
+   
+* My model seems very close to the auto model 
+* For the sake of this project, I will continue with my model as there is not enough significant difference between the two to justify the swap.
+
+```{r}
+pwr_forecast <- forecast(pwr_model, h = 12)
+autoplot(pwr_forecast)
+```
+
+```{r}
+signif(pwr_forecast$mean/1000000,3)
+```
+
+```{r}
+export <- pwr_forecast$mean
+write.csv(export, "Power Forecasts.csv")
+```
+ 
