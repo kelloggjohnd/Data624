@@ -1,0 +1,398 @@
+---
+title: "Data 624 Assignment 7"
+author: "John Kellogg"
+date: "4/17/2021"
+output: 
+ html_document:
+  code_folding: hide
+  toc: true
+  toc_float: 
+    collapsed: true
+    smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(fpp2)
+library(readxl)
+library(knitr)
+library(urca)
+library(pls)
+library(caret)
+library(tidyverse)
+library(glmnet)
+library(elasticnet)
+library(knitr)
+```
+
+# Assignment 7:
+In Kuhn and Johnson do problems 6.2 and 6.3. There are only two but they consist of many parts.  
+Please submit a link to your Rpubs and submit the .rmd file as well.
+
+## 6.2 
+Developing a model to predict permeability (see Sect. 1.4) could save significant
+resources for a pharmaceutical company, while at the same time more
+rapidly identifying molecules that have a sufficient permeability to become a
+drug:
+
+### a.
+Start R and use these commands to load the data:
+```{r}
+library(AppliedPredictiveModeling)
+data(permeability)
+```
+
+The matrix fingerprints contains the 1,107 binary molecular predictors
+for the 165 compounds, while permeability contains permeability
+response.
+
+### b.
+The fingerprint predictors indicate the presence or absence of substructures
+of a molecule and are often sparse meaning that relatively few of the
+molecules contain each substructure. Filter out the predictors that have
+low frequencies using the nearZeroVar function from the caret package.
+How many predictors are left for modeling?
+
+```{r}
+fingerprints_adjusted <- fingerprints[,-nearZeroVar(fingerprints)]
+print(paste("Non-Sparse predictors: ", ncol(fingerprints[,-nearZeroVar(fingerprints)])))
+```
+
+
+### c.
+Split the data into a training and a test set, pre-process the data, and
+tune a PLS model. How many latent variables are optimal and what is
+the corresponding re-sampled estimate of R2?  
+
+```{r}
+set.seed(42)
+
+df <- as.data.frame(fingerprints[, nearZeroVar(fingerprints)]) %>% mutate(permeability = permeability)
+
+split_data <- createDataPartition(df$permeability, p=.75, list = FALSE)
+x_train <- fingerprints_adjusted[split_data,]
+x_test <- fingerprints_adjusted[-split_data,]
+y_train <- permeability[split_data,]
+y_test <- permeability[-split_data,]
+
+train_df <- df[split_data,]
+test_df <- df[-split_data,]
+
+plsfit <- train(x=x_train, y=y_train,
+  method = "pls",
+  tuneGrid = expand.grid(ncomp = 1:10),
+  trControl = trainControl(method = "cv", number = 10)
+)
+
+title <- paste("Training set RMSE minimized at",
+               plsfit$bestTune$ncomp, 
+               "Components")
+
+plsfit_graph <- data.frame(plsfit$results$ncomp,plsfit$results$RMSE)
+
+ggplot(plsfit_graph, aes(x=plsfit.results.ncomp, y=plsfit.results.RMSE))+
+  geom_line()+
+  geom_point()+
+  xlab("Number of Variables")+
+  ggtitle(title)
+
+plsfit$results
+
+plsfit$results %>%
+  filter(ncomp == plsfit$bestTune$ncomp) %>%
+  select(ncomp, RMSE, Rsquared)
+```
+
+* After splitting the data 75/25, the PLS model is tuned.
+  * 10-fold cross validation
+* Optimal number of features in this case is 7 explaining ~45% of the variance
+
+### d.
+Predict the response for the test set. What is the test set estimate of R2?
+```{r}
+training_data <- data.frame(x_train, y_train)
+
+pls_model <- train(
+  permeability ~ ., data = train_df, method = "pls",
+  center = TRUE,
+  trControl = trainControl("cv", number = 10),
+  tuneLength = 25
+)
+
+result <- pls_model$result %>%
+  filter(ncomp == pls_model$bestTune$ncomp) %>%
+  select(ncomp, RMSE, Rsquared)
+
+pls_results <- data.frame(
+  Model = "PLS",
+  RMSE = result$RMSE,
+  Rsquared = result$Rsquared
+)
+
+result
+```
+
+* Test model performance got the following:
+  * R squared 0.557
+  * RMSE 11.183
+
+### e.
+Try building other models discussed in this chapter. Do any have better
+predictive performance?
+
+```{r pcr}
+pcr_model <- train(
+  permeability ~ ., data = train_df, method = "pcr",
+  center = TRUE,
+  trControl = trainControl("cv", number = 10),
+  tuneLength = 25
+)
+
+pcr_pred <- predict(pcr_model, test_df)
+
+pcr_results <- data.frame(
+  Model = "PCR",
+  RMSE = RMSE(pcr_pred, test_df$permeability),
+  Rsquared = R2(pcr_pred, test_df$permeability)
+)
+```
+
+```{r ridge}
+r <- model.matrix(permeability ~ ., data = train_df)
+r_test <- model.matrix(permeability ~ ., data = test_df)
+
+ridge_cv <- cv.glmnet(r, train_df$permeability, alpha=0)
+ridge_model <- glmnet(r, train_df$permeability, alpha = 0, lambda = ridge_cv$lambda.min)
+
+ridge_pred <- as.vector(predict(ridge_model, r_test))
+
+ridge_results <- data.frame(
+  Model = "RIDGE",
+  RMSE = RMSE(ridge_pred, test_df$permeability),
+  Rsquared = R2(ridge_pred, test_df$permeability)
+)
+```
+
+```{r elastic}
+fractionTune = seq(.3,.8,.1)
+lambdaTune = seq(.05, .3, .1)
+
+elastic_model <- train(x = x_train, y = y_train, 
+                  method = "enet", 
+                  trControl = trainControl(method = "repeatedcv", repeats = 5), 
+                  preProcess = c("center", "scale"), 
+                  tuneGrid = expand.grid(lambda = lambdaTune,
+                                         fraction = fractionTune)
+                )
+
+elastic_pred <- elastic_model%>%
+  predict(x_test)
+
+elastic_results <- data.frame(
+  Model = "ElasticNet",
+  RMSE = RMSE(elastic_pred, test_df$permeability),
+  Rsquared = R2(elastic_pred, test_df$permeability)
+ )
+```
+
+```{r}
+results <- rbind(pcr_results, ridge_results)
+results <- rbind(results, elastic_results)
+results <- rbind(results, pls_results)
+
+kable(results)
+```
+
+
+
+### f.
+Would you recommend any of your models to replace the permeability
+laboratory experiment?
+
+* ElasticNet has the lowest RMSE and Highest R squared.
+* It would be the better model
+
+## 6.3
+A chemical manufacturing process for a pharmaceutical product was
+discussed in Sect. 1.4. In this problem, the objective is to understand the relationship
+between biological measurements of the raw materials (predictors),
+measurements of the manufacturing process (predictors), and the response of
+product yield. Biological predictors cannot be changed but can be used to
+assess the quality of the raw material before processing. On the other hand,
+manufacturing process predictors can be changed in the manufacturing process.
+Improving product yield by 1% will boost revenue by approximately
+one hundred thousand dollars per batch:
+
+### a.
+Start R and use these commands to load the data:
+```{r}
+library(AppliedPredictiveModeling)
+library(RANN)
+data(ChemicalManufacturingProcess)
+
+```
+The matrix processPredictors contains the 57 predictors (12 describing
+the input biological material and 45 describing the process predictors)
+for the 176 manufacturing runs. yield contains the percent yield for each
+run.
+
+### b.
+A small percentage of cells in the predictor set contain missing values. Use
+an imputation function to fill in these missing values (e.g., see Sect. 3.8).
+
+```{r}
+knn_model <- preProcess(ChemicalManufacturingProcess, "knnImpute")
+CMP_predict <- predict(knn_model, ChemicalManufacturingProcess)
+```
+
+
+### c.
+Split the data into a training and a test set, pre-process the data, and
+tune a model of your choice from this chapter. What is the optimal value
+of the performance metric?
+
+
+```{r}
+df <- CMP_predict %>%
+  select_at(vars(-one_of(nearZeroVar(.,names = TRUE))))
+
+split_data <- createDataPartition(df$Yield, p=.75, list = FALSE)
+
+train_df <- df[split_data,]
+test_df <- df[-split_data,]
+
+plsfit <- train(Yield ~.,
+  data = train_df,
+  method = "pls",
+  tuneGrid = expand.grid(ncomp = 1:10),
+  trControl = trainControl(method = "cv", number = 10),
+  tuneLength = 25
+)
+
+title <- paste("Training set RMSE minimized at",
+               plsfit$bestTune$ncomp, 
+               "Components")
+
+plsfit_graph <- data.frame(plsfit$results$ncomp,plsfit$results$RMSE)
+
+ggplot(plsfit_graph, aes(x=plsfit.results.ncomp, y=plsfit.results.RMSE))+
+  geom_line()+
+  geom_point()+
+  xlab("Number of Variables")+
+  ggtitle(title)
+
+plsfit$results
+
+plsfit$results %>%
+  filter(ncomp == plsfit$bestTune$ncomp) %>%
+  select(ncomp, RMSE, Rsquared)
+```
+
+* After splitting the data 75/25, the PLS model is tuned.
+  * 10-fold cross validation
+* Optimal number of features in this case is 4 explaining ~60% of the variance 
+
+### d.
+Predict the response for the test set. What is the value of the performance
+metric and how does this compare with the re-sampled performance metric
+on the training set?
+
+```{r}
+pls_pred <- predict(plsfit, test_df)
+
+pls_results <- data.frame(
+  Model = "PLS",
+  RMSE = RMSE(pls_pred, test_df$Yield),
+  Rsquared = R2(pls_pred, test_df$Yield)
+ )
+pls_results
+```
+
+* PLS model has higher RMSE but lower R Squared.
+* Personally, I say not much change.
+
+### e.
+Which predictors are most important in the model you have trained? Do
+either the biological or process predictors dominate the list?
+
+```{r}
+pls_important <- varImp(plsfit)$importance %>%
+  as.data.frame()%>%
+  rownames_to_column("Variable")%>%
+  filter(Overall >= 50) %>%
+  arrange(desc(Overall)) %>%
+  mutate(importance = row_number())
+
+pls_important%>%
+  mutate(Variable = fct_reorder(Variable, Overall))%>%
+  ggplot(aes(x=Overall, y=Variable))+
+  geom_bar(stat = "identity")
+```
+
+* Manufacturing dominates the top predictors
+
+### f.
+Explore the relationships between each of the top predictors and the response.
+How could this information be helpful in improving yield in future
+runs of the manufacturing process?
+
+```{r}
+pls_top <- varImp(plsfit, scale = FALSE)
+toporder <- order(abs(pls_top$importance), decreasing = TRUE)
+top <- rownames(pls_top$importance)[toporder[c(1:3)]] 
+
+coef_order <- tibble(
+  plsfit_coef_name = rownames(pls_top$importance),
+  plsfit_coef = coef(plsfit$finalModel)
+)
+
+top15 <- coef_order %>%
+  arrange(desc(plsfit_coef))%>%
+  slice_head(n=15)
+
+top15
+```
+
+```{r}
+library(gridExtra)
+p1 <- qplot(data = df, Yield, ManufacturingProcess32)
+p2 <- qplot(data = df, Yield, ManufacturingProcess34)
+p3 <- qplot(data = df, Yield, ManufacturingProcess09)
+p4 <- qplot(data = df, Yield, ManufacturingProcess06)
+p5 <- qplot(data = df, Yield, ManufacturingProcess04)
+p6 <- qplot(data = df, Yield, BiologicalMaterial03)
+p7 <- qplot(data = df, Yield, ManufacturingProcess33)
+p8 <- qplot(data = df, Yield, ManufacturingProcess19)
+p9 <- qplot(data = df, Yield, ManufacturingProcess39)
+p10 <- qplot(data = df, Yield, ManufacturingProcess45)
+p11 <- qplot(data = df, Yield, ManufacturingProcess11)
+p12 <- qplot(data = df, Yield, ManufacturingProcess15)
+p13 <- qplot(data = df, Yield, BiologicalMaterial06)
+p14 <- qplot(data = df, Yield, ManufacturingProcess10)
+p15 <- qplot(data = df, Yield, ManufacturingProcess44)
+
+grid.arrange(p1, p2, p3, p4, nrow = 2, ncol=2)
+grid.arrange(p5, p6, p7, p8, nrow = 2, ncol=2)
+grid.arrange(p9, p10, p11, p12, nrow = 2, ncol=2)
+grid.arrange(p13, p14, p15, nrow = 2, ncol=2)
+
+```
+
+* I hoped to see a noticeable change as the Coeff dropped.
+* There is not enough trend to present as findings
+
+```{r}
+df_correlation <- df[,top15$plsfit_coef_name]
+df_correlation <- cbind(df_correlation, df$Yield)
+names(df_correlation)[16] <- "Yield"
+
+df_corr <- cor(df_correlation)
+corrplot::corrplot(df_corr,method = "circle", order = "alphabet", type = "lower", tl.srt = 45)
+
+```
+
+* At quick glance, I would recommend to stay away from Manufacturing Process 4.
+  * It is in the top5 coeff values but has the highest negative correlation to yield
+* Would Recommend Process 32
+  * Top of the coeff values and has the highest positive correlation to yield
+
